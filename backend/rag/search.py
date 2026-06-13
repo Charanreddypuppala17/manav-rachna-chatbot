@@ -29,7 +29,10 @@ if not os.path.exists(QDRANT_PATH) or not os.listdir(QDRANT_PATH):
         log_extract(f"Extracting {zip_path} to {db_parent}...")
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(db_parent)
+                for member in zip_ref.infolist():
+                    # Normalize backslashes to forward slashes for Linux compatibility
+                    member.filename = member.filename.replace('\\', '/')
+                    zip_ref.extract(member, db_parent)
             log_extract("Extraction complete!")
             if os.path.exists(QDRANT_PATH):
                 log_extract(f"Contents after extract: {os.listdir(QDRANT_PATH)}")
