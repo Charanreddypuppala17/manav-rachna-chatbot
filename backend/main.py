@@ -106,6 +106,46 @@ def debug():
         "extraction_log": log_content
     }
 
+@app.get("/debug_search")
+def debug_search(q: str = "Manoj Kumar"):
+    from rag.search import get_embedding, search, vectors, DB_PATH, VECTORS_PATH
+    import numpy as np
+    import os
+    import sqlite3
+    
+    vectors_exist = os.path.exists(VECTORS_PATH)
+    db_exist = os.path.exists(DB_PATH)
+    
+    emb = get_embedding(q)
+    emb_len = len(emb)
+    emb_sum = sum(emb)
+    
+    res = search(q)
+    
+    vec_shape = vectors.shape if vectors is not None else None
+    
+    num_rows = 0
+    if db_exist:
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM chunks")
+            num_rows = cursor.fetchone()[0]
+            conn.close()
+        except Exception as e:
+            num_rows = f"Error: {e}"
+        
+    return {
+        "q": q,
+        "vectors_exist": vectors_exist,
+        "db_exist": db_exist,
+        "vectors_loaded": vectors is not None,
+        "vec_shape": vec_shape,
+        "db_num_rows": num_rows,
+        "emb_len": emb_len,
+        "emb_sum": emb_sum,
+        "search_results": res
+    }
 
 # Authentication Endpoints
 @app.post("/api/auth/register")
