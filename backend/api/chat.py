@@ -7,7 +7,16 @@ load_dotenv()
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+client = None
+
+def get_groq_client():
+    global client
+    if client is None:
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY environment variable is missing or empty!")
+        client = Groq(api_key=api_key)
+    return client
 
 SYSTEM_PROMPT = """You are a helpful assistant for Manavrachna University (MRU/MRIIRS).
 
@@ -192,7 +201,8 @@ def chat(question: str, history: list = []) -> dict:
 
     # Try primary model first, fallback if fails
     try:
-        response = client.chat.completions.create(
+        groq_client = get_groq_client()
+        response = groq_client.chat.completions.create(
             model=PRIMARY_MODEL,
             messages=messages,
             max_tokens=1024,
@@ -203,7 +213,8 @@ def chat(question: str, history: list = []) -> dict:
     except Exception as e:
         print(f"Primary model failed: {e}, trying fallback...")
         try:
-            response = client.chat.completions.create(
+            groq_client = get_groq_client()
+            response = groq_client.chat.completions.create(
                 model=FALLBACK_MODEL,
                 messages=messages,
                 max_tokens=1024,

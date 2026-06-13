@@ -1,5 +1,8 @@
 import os
 import sys
+print("DIAGNOSTIC - Environment keys:", list(os.environ.keys()))
+print("DIAGNOSTIC - GROQ_API_KEY exists:", "GROQ_API_KEY" in os.environ)
+
 from uuid import uuid4
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Depends, status
