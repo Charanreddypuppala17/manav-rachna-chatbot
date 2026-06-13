@@ -3,7 +3,7 @@ import os
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance, PointStruct
+from qdrant_client.models import VectorParams, Distance, PointStruct, ScalarQuantization, ScalarQuantizationConfig, ScalarType
 
 INPUT_FILE = os.path.join(os.path.dirname(__file__), "../data/chunks.json")
 QDRANT_PATH = os.path.join(os.path.dirname(__file__), "../local_qdrant")
@@ -42,10 +42,16 @@ def build_index():
         print(f"Deleting existing collection: {COLLECTION_NAME}")
         client.delete_collection(COLLECTION_NAME)
 
-    # Create fresh collection
+    # Create fresh collection with on-disk index and INT8 scalar quantization to optimize memory usage (RAM < 20MB)
     client.create_collection(
         collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(size=VECTOR_DIM, distance=Distance.COSINE)
+        vectors_config=VectorParams(size=VECTOR_DIM, distance=Distance.COSINE, on_disk=True),
+        quantization_config=ScalarQuantization(
+            scalar=ScalarQuantizationConfig(
+                type=ScalarType.INT8,
+                always_ram=False,
+            )
+        )
     )
     print(f"Collection '{COLLECTION_NAME}' created")
 

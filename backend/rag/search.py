@@ -1,55 +1,42 @@
 import os
 import requests
+import sqlite3
 import zipfile
+import numpy as np
 from dotenv import load_dotenv
-from qdrant_client import QdrantClient
 
 load_dotenv()
 
-QDRANT_PATH = os.path.join(os.path.dirname(__file__), "../local_qdrant")
-COLLECTION_NAME = "college_kb"
+# Paths relative to search.py
+RAG_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(RAG_DIR)
+ZIP_PATH = os.path.join(BACKEND_DIR, "rag_data.zip")
+VECTORS_PATH = os.path.join(BACKEND_DIR, "vectors.npy")
+DB_PATH = os.path.join(BACKEND_DIR, "chunks.db")
 TOP_K = 10
 
-# Automatically restore Qdrant local database if missing/empty
-db_parent = os.path.dirname(QDRANT_PATH)
-zip_path = os.path.join(db_parent, "local_qdrant.zip")
-log_path = os.path.join(db_parent, "extraction.log")
-
-def log_extract(msg):
-    print(msg)
-    try:
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"{msg}\n")
-    except Exception:
-        pass
-
-if not os.path.exists(QDRANT_PATH) or not os.listdir(QDRANT_PATH):
-    log_extract("Qdrant local database not found or empty.")
-    if os.path.exists(zip_path):
-        log_extract(f"Extracting {zip_path} to {db_parent}...")
+# Automatic database restore on startup
+if not os.path.exists(VECTORS_PATH) or not os.path.exists(DB_PATH):
+    print("NumPy vector DB or chunks DB not found. Restoring from zip...")
+    if os.path.exists(ZIP_PATH):
         try:
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                for member in zip_ref.infolist():
-                    # Normalize backslashes to forward slashes for Linux compatibility
-                    member.filename = member.filename.replace('\\', '/')
-                    zip_ref.extract(member, db_parent)
-            log_extract("Extraction complete!")
-            if os.path.exists(QDRANT_PATH):
-                log_extract(f"Contents after extract: {os.listdir(QDRANT_PATH)}")
-                if os.path.exists(os.path.join(QDRANT_PATH, "collection")):
-                    log_extract(f"Collection folder contents: {os.listdir(os.path.join(QDRANT_PATH, 'collection'))}")
-                else:
-                    log_extract("Warning: collection folder was NOT found in local_qdrant after extract!")
-            else:
-                log_extract("Warning: local_qdrant directory still does not exist after extract!")
+            with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
+                zip_ref.extractall(BACKEND_DIR)
+            print("Restoration complete!")
         except Exception as e:
-            log_extract(f"Error extracting Qdrant database zip: {e}")
+            print(f"Error extracting RAG database zip: {e}")
     else:
-        log_extract(f"Warning: {zip_path} not found. Cannot restore Qdrant database.")
+        print(f"Warning: {ZIP_PATH} not found. Cannot restore database.")
 
-# Load once at module level (reused across calls)
-print("Initializing Qdrant client...")
-client = QdrantClient(path=QDRANT_PATH)
+# Load vectors once at module level (exactly 36MB RAM)
+vectors = None
+if os.path.exists(VECTORS_PATH):
+    print("Loading vectors into memory...")
+    try:
+        vectors = np.load(VECTORS_PATH)
+        print(f"Loaded vectors with shape: {vectors.shape}")
+    except Exception as e:
+        print(f"Error loading vectors.npy: {e}")
 
 def get_embedding(text: str) -> list:
     """Get vector embedding using Hugging Face's serverless Inference API (uses 0MB of local RAM)."""
@@ -78,37 +65,57 @@ def get_embedding(text: str) -> list:
         print(f"Embedding generation failed: {e}")
         return [0.0] * 384 # 384 dimensions for all-MiniLM-L6-v2
 
-
 def search(query: str, top_k: int = TOP_K):
-    # Embed the query using Hugging Face API
-    query_vector = get_embedding(query)
-
-    # Search Qdrant
-    try:
-        results = client.query_points(
-            collection_name=COLLECTION_NAME,
-            query=query_vector,
-            limit=top_k,
-            with_payload=True
-        ).points
-    except Exception as e:
-        print(f"Warning: Qdrant search failed (local database might be empty or uninitialized): {e}")
+    global vectors
+    if vectors is None:
+        print("Warning: Vector database is not loaded!")
         return []
+        
+    # Embed query
+    query_vector = get_embedding(query)
+    query_vector = np.array(query_vector, dtype=np.float32)
+    
+    # Compute cosine similarity using vectorized numpy
+    # Cosine similarity = dot(A, B) / (norm(A) * norm(B))
+    dot_products = np.dot(vectors, query_vector)
+    vector_norms = np.linalg.norm(vectors, axis=1)
+    query_norm = np.linalg.norm(query_vector)
+    
+    if query_norm == 0:
+        return []
+        
+    # Prevent division by zero
+    vector_norms[vector_norms == 0] = 1e-10
+    
+    similarities = dot_products / (vector_norms * query_norm)
+    
+    # Get top_k indices sorted descending
+    top_indices = np.argsort(similarities)[::-1][:top_k]
+    
+    # Connect to SQLite metadata DB
+    results = []
+    if os.path.exists(DB_PATH):
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            for idx in top_indices:
+                score = float(similarities[idx])
+                # Query metadata by ID
+                cursor.execute("SELECT url, title, text FROM chunks WHERE id = ?", (int(idx),))
+                row = cursor.fetchone()
+                if row:
+                    results.append({
+                        "score": round(score, 4),
+                        "url": row[0],
+                        "title": row[1],
+                        "text": row[2]
+                    })
+            conn.close()
+        except Exception as e:
+            print(f"Error querying SQLite chunks metadata: {e}")
+            
+    return results
 
-    # Format results
-    formatted = []
-    for r in results:
-        formatted.append({
-            "score": round(r.score, 4),
-            "text": r.payload.get("text", ""),
-            "url": r.payload.get("url", ""),
-            "title": r.payload.get("title", "")
-        })
-
-    return formatted
-
-
-# Quick test
 if __name__ == "__main__":
     query = input("Enter test query: ")
     results = search(query)
