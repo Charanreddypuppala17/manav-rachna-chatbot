@@ -74,6 +74,16 @@ def debug():
     qdrant_path = os.path.join(os.path.dirname(__file__), "local_qdrant")
     qdrant_exists = os.path.exists(qdrant_path)
     qdrant_contents = os.listdir(qdrant_path) if qdrant_exists else []
+    
+    qdrant_tree = []
+    if qdrant_exists:
+        for root, dirs, files in os.walk(qdrant_path):
+            for file in files:
+                qdrant_tree.append(os.path.relpath(os.path.join(root, file), qdrant_path))
+                
+    db_parent = os.path.dirname(qdrant_path)
+    parent_contents = os.listdir(db_parent) if os.path.exists(db_parent) else []
+    
     hf_token_exists = "HF_TOKEN" in os.environ
     groq_key_exists = "GROQ_API_KEY" in os.environ
     
@@ -89,6 +99,8 @@ def debug():
     return {
         "qdrant_exists": qdrant_exists,
         "qdrant_contents": qdrant_contents,
+        "qdrant_tree": qdrant_tree,
+        "parent_contents": parent_contents,
         "hf_token_exists": hf_token_exists,
         "groq_key_exists": groq_key_exists,
         "extraction_log": log_content
