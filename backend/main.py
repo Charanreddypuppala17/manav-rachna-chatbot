@@ -209,6 +209,47 @@ async def chat_endpoint(request: ChatRequest, current_user: Optional[dict] = Dep
             detail=f"An error occurred while processing your request: {str(e)}"
         )
 
+@app.get("/debug_whatsapp")
+def debug_whatsapp():
+    import db.database as db
+    from datetime import datetime
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        db_type = "PostgreSQL" if db.IS_POSTGRES else "SQLite"
+        
+        # Get recent WhatsApp sessions
+        db.execute_query(cursor, """
+            SELECT session_id, title, created_at FROM chat_sessions 
+            WHERE session_id LIKE 'whatsapp_%' 
+            ORDER BY created_at DESC LIMIT 5
+        """)
+        sessions = [dict(r) for r in cursor.fetchall()]
+        
+        # Get recent WhatsApp messages
+        db.execute_query(cursor, """
+            SELECT id, session_id, role, content, timestamp FROM messages 
+            WHERE session_id LIKE 'whatsapp_%' 
+            ORDER BY timestamp DESC LIMIT 20
+        """)
+        messages = []
+        for r in cursor.fetchall():
+            row_dict = dict(r)
+            if "timestamp" in row_dict and isinstance(row_dict["timestamp"], datetime):
+                row_dict["timestamp"] = row_dict["timestamp"].isoformat()
+            messages.append(row_dict)
+            
+        return {
+            "database_type": db_type,
+            "has_database_url": os.getenv("DATABASE_URL") is not None,
+            "sessions": sessions,
+            "messages": messages
+        }
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
+
 # WhatsApp Webhook Endpoint (via Twilio)
 @app.post("/whatsapp")
 async def whatsapp_webhook(Body: str = Form(...), From: str = Form(...)):
