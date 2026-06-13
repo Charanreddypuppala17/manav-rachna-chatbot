@@ -221,17 +221,17 @@ def debug_whatsapp():
         # Get recent WhatsApp sessions
         db.execute_query(cursor, """
             SELECT session_id, title, created_at FROM chat_sessions 
-            WHERE session_id LIKE 'whatsapp_%' 
+            WHERE session_id LIKE ? 
             ORDER BY created_at DESC LIMIT 5
-        """)
+        """, ('whatsapp_%',))
         sessions = [dict(r) for r in cursor.fetchall()]
         
         # Get recent WhatsApp messages
         db.execute_query(cursor, """
             SELECT id, session_id, role, content, timestamp FROM messages 
-            WHERE session_id LIKE 'whatsapp_%' 
+            WHERE session_id LIKE ? 
             ORDER BY timestamp DESC LIMIT 20
-        """)
+        """, ('whatsapp_%',))
         messages = []
         for r in cursor.fetchall():
             row_dict = dict(r)
@@ -249,6 +249,7 @@ def debug_whatsapp():
         return {"error": str(e)}
     finally:
         conn.close()
+
 
 # WhatsApp Webhook Endpoint (via Twilio)
 @app.post("/whatsapp")
