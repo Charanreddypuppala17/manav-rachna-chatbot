@@ -274,8 +274,8 @@ async def whatsapp_webhook(Body: str = Form(...), From: str = Form(...)):
         formatted_history.append({"role": h["role"], "content": h["content"]})
         
     try:
-        # 4. Generate answer using RAG chatbot
-        result = chat(question=Body, history=formatted_history)
+        # 4. Generate answer using RAG chatbot with WhatsApp conciseness flag
+        result = chat(question=Body, history=formatted_history, is_whatsapp=True)
         answer = result["answer"]
         sources = result.get("sources", [])
         
@@ -285,17 +285,28 @@ async def whatsapp_webhook(Body: str = Form(...), From: str = Form(...)):
         # Append short sources list to WhatsApp message if available (WhatsApp doesn't render HTML, so plain text URLs work best)
         if sources:
             sources_text = "\n\nSources:\n" + "\n".join([f"- {s}" for s in sources[:3]])
-            # Check length to prevent exceeding WhatsApp limits
-            if len(answer) + len(sources_text) < 1550:
-                answer += sources_text
+            answer_with_sources = answer + sources_text
+        else:
+            answer_with_sources = answer
+            
+        # Ensure we strictly stay under Twilio's 1600 character limit to prevent Error 63015
+        if len(answer_with_sources) > 1575:
+            answer = answer[:1450] + "...\n\n[Response truncated due to length limit. Please visit the website for full details.]"
+            if sources:
+                answer += "\n\nSources:\n" + "\n".join([f"- {s}" for s in sources[:3]])
+        else:
+            answer = answer_with_sources
     except Exception as e:
         print(f"Error in WhatsApp chat processing: {e}")
         answer = "⚠️ **Service Notice**: Sorry, I'm currently experiencing high demand. Please try again in a moment."
         
+    # Escape special XML characters for TwiML compliance
+    escaped_answer = answer.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    
     # 6. Return response in Twilio Markup Language (TwiML) format
     twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Message>{answer}</Message>
+    <Message>{escaped_answer}</Message>
 </Response>"""
     
     return Response(content=twiml_response, media_type="application/xml")

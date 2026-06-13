@@ -99,7 +99,7 @@ Rules:
 - If the question is about university leaders, courses, admissions, or faculty, and the context is missing details, use your general knowledge to answer (e.g. Chancellor is Dr. Prashant Bhalla, Vice President is Dr. Amit Bhalla).
 """
 
-def chat(question: str, history: list = []) -> dict:
+def chat(question: str, history: list = [], is_whatsapp: bool = False) -> dict:
     from rag.search import search
 
     # Clean up and expand search query to override distractor words (like years) and typos
@@ -189,6 +189,8 @@ def chat(question: str, history: list = []) -> dict:
 
     # Build prompt
     user_prompt = build_prompt(context_chunks, question)
+    if is_whatsapp:
+        user_prompt += "\n\nIMPORTANT: The user is messaging you on WhatsApp. Keep your response extremely brief, direct, and under 800 characters (max 120 words). Focus only on answering the user's specific question. Avoid listing unrelated details, long introductions, or large tables."
 
     # Build messages with history
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
