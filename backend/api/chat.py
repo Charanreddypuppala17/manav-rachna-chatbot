@@ -206,7 +206,8 @@ def chat(question: str, history: list = []) -> dict:
             model=PRIMARY_MODEL,
             messages=messages,
             max_tokens=1024,
-            temperature=0.7
+            temperature=0.7,
+            timeout=5.0
         )
         model_used = PRIMARY_MODEL
         answer = response.choices[0].message.content
@@ -218,7 +219,8 @@ def chat(question: str, history: list = []) -> dict:
                 model=FALLBACK_MODEL,
                 messages=messages,
                 max_tokens=1024,
-                temperature=0.7
+                temperature=0.7,
+                timeout=5.0
             )
             model_used = FALLBACK_MODEL
             answer = response.choices[0].message.content
