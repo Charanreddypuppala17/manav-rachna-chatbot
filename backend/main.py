@@ -108,20 +108,57 @@ def debug():
 
 @app.get("/debug_search")
 def debug_search(q: str = "Manoj Kumar"):
-    from rag.search import get_embedding, search, vectors, DB_PATH, VECTORS_PATH
+    from rag.search import search, vectors, DB_PATH, VECTORS_PATH
     import numpy as np
     import os
     import sqlite3
+    import requests
     
     vectors_exist = os.path.exists(VECTORS_PATH)
     db_exist = os.path.exists(DB_PATH)
     
-    emb = get_embedding(q)
-    emb_len = len(emb)
-    emb_sum = sum(emb)
+    api_url = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
+    hf_token = os.getenv("HF_TOKEN")
     
+    headers = {}
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+        
+    error_msg = None
+    emb = []
+    status_code = None
+    response_text = None
+    
+    try:
+        response = requests.post(api_url, headers=headers, json={"inputs": q}, timeout=5)
+        status_code = response.status_code
+        response_text = response.text[:200]
+        if response.status_code != 200:
+            api_url_alt = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
+            response = requests.post(api_url_alt, headers=headers, json={"inputs": q}, timeout=5)
+            status_code = response.status_code
+            response_text = response.text[:200]
+            
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0 and isinstance(result[0], list):
+                emb = result[0]
+            else:
+                emb = result
+        else:
+            error_msg = f"Inference API returned {response.status_code}"
+    except Exception as e:
+        error_msg = f"Exception: {str(e)}"
+        
+    import socket
+    dns_res = {}
+    for domain in ["router.huggingface.co", "api-inference.huggingface.co", "huggingface.co", "google.com"]:
+        try:
+            dns_res[domain] = socket.gethostbyname(domain)
+        except Exception as e:
+            dns_res[domain] = f"Error: {e}"
+            
     res = search(q)
-    
     vec_shape = vectors.shape if vectors is not None else None
     
     num_rows = 0
@@ -134,16 +171,23 @@ def debug_search(q: str = "Manoj Kumar"):
             conn.close()
         except Exception as e:
             num_rows = f"Error: {e}"
-        
+            
     return {
         "q": q,
+        "hf_token_len": len(hf_token) if hf_token else 0,
+        "hf_token_exists": hf_token is not None,
+        "hf_token_value_preview": hf_token[:8] + "..." if hf_token else "",
         "vectors_exist": vectors_exist,
         "db_exist": db_exist,
         "vectors_loaded": vectors is not None,
         "vec_shape": vec_shape,
         "db_num_rows": num_rows,
-        "emb_len": emb_len,
-        "emb_sum": emb_sum,
+        "emb_len": len(emb),
+        "emb_sum": sum(emb) if emb else 0.0,
+        "api_status_code": status_code,
+        "api_response_text": response_text,
+        "embedding_error": error_msg,
+        "dns_resolution": dns_res,
         "search_results": res
     }
 
