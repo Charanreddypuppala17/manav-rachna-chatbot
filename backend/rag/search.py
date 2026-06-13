@@ -17,12 +17,16 @@ def search(query: str, top_k: int = TOP_K):
     query_vector = model.encode(query, convert_to_numpy=True).tolist()
 
     # Search Qdrant
-    results = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=query_vector,
-        limit=top_k,
-        with_payload=True
-    ).points
+    try:
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            limit=top_k,
+            with_payload=True
+        ).points
+    except Exception as e:
+        print(f"Warning: Qdrant search failed (local database might be empty or uninitialized): {e}")
+        return []
 
     # Format results
     formatted = []
