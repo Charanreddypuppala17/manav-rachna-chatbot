@@ -5,7 +5,7 @@ print("DIAGNOSTIC - GROQ_API_KEY exists:", "GROQ_API_KEY" in os.environ)
 
 from uuid import uuid4
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -208,6 +208,55 @@ async def chat_endpoint(request: ChatRequest, current_user: Optional[dict] = Dep
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while processing your request: {str(e)}"
         )
+
+# WhatsApp Webhook Endpoint (via Twilio)
+@app.post("/whatsapp")
+async def whatsapp_webhook(Body: str = Form(...), From: str = Form(...)):
+    # Clean up phone number to make a nice session ID (e.g. whatsapp_+14155238886)
+    clean_sender = From.replace("whatsapp:", "").strip()
+    session_id = f"whatsapp_{clean_sender}"
+    
+    # 1. Verify/Create Chat Session in DB
+    session = db.get_chat_session(session_id)
+    if not session:
+        # Create a persistent session for this phone number
+        db.create_chat_session(session_id, user_id=None, title=f"WhatsApp {clean_sender}")
+        
+    # 2. Save user's message
+    db.save_message(session_id, "user", Body)
+    
+    # 3. Get history for RAG
+    history = db.get_history(session_id, limit=6)
+    formatted_history = []
+    for h in history:
+        formatted_history.append({"role": h["role"], "content": h["content"]})
+        
+    try:
+        # 4. Generate answer using RAG chatbot
+        result = chat(question=Body, history=formatted_history)
+        answer = result["answer"]
+        sources = result.get("sources", [])
+        
+        # 5. Save assistant reply along with sources
+        db.save_message(session_id, "assistant", answer, sources)
+        
+        # Append short sources list to WhatsApp message if available (WhatsApp doesn't render HTML, so plain text URLs work best)
+        if sources:
+            sources_text = "\n\nSources:\n" + "\n".join([f"- {s}" for s in sources[:3]])
+            # Check length to prevent exceeding WhatsApp limits
+            if len(answer) + len(sources_text) < 1550:
+                answer += sources_text
+    except Exception as e:
+        print(f"Error in WhatsApp chat processing: {e}")
+        answer = "⚠️ **Service Notice**: Sorry, I'm currently experiencing high demand. Please try again in a moment."
+        
+    # 6. Return response in Twilio Markup Language (TwiML) format
+    twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Message>{answer}</Message>
+</Response>"""
+    
+    return Response(content=twiml_response, media_type="application/xml")
 
 if __name__ == "__main__":
     import uvicorn
