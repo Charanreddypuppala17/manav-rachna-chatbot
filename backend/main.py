@@ -19,17 +19,10 @@ import db.database as db
 app = FastAPI(title="College Chatbot API")
 
 # Allow frontend to call this API
-frontend_url = os.getenv("FRONTEND_URL")
-origins = ["http://localhost:3000", "http://localhost:8000"]
-if frontend_url:
-    origins.append(frontend_url)
-    if frontend_url.endswith("/"):
-        origins.append(frontend_url[:-1])
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
