@@ -68,6 +68,22 @@ async def startup():
 def root():
     return {"status": "College Chatbot API is running"}
 
+@app.get("/debug")
+def debug():
+    import os
+    qdrant_path = os.path.join(os.path.dirname(__file__), "local_qdrant")
+    qdrant_exists = os.path.exists(qdrant_path)
+    qdrant_contents = os.listdir(qdrant_path) if qdrant_exists else []
+    hf_token_exists = "HF_TOKEN" in os.environ
+    groq_key_exists = "GROQ_API_KEY" in os.environ
+    return {
+        "qdrant_exists": qdrant_exists,
+        "qdrant_contents": qdrant_contents,
+        "hf_token_exists": hf_token_exists,
+        "groq_key_exists": groq_key_exists,
+    }
+
+
 # Authentication Endpoints
 @app.post("/api/auth/register")
 def register(user: UserRegister):
