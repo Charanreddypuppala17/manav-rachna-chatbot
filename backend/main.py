@@ -76,11 +76,22 @@ def debug():
     qdrant_contents = os.listdir(qdrant_path) if qdrant_exists else []
     hf_token_exists = "HF_TOKEN" in os.environ
     groq_key_exists = "GROQ_API_KEY" in os.environ
+    
+    log_path = os.path.join(os.path.dirname(__file__), "extraction.log")
+    log_content = ""
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, "r", encoding="utf-8") as f:
+                log_content = f.read()
+        except Exception as e:
+            log_content = f"Error reading log: {e}"
+            
     return {
         "qdrant_exists": qdrant_exists,
         "qdrant_contents": qdrant_contents,
         "hf_token_exists": hf_token_exists,
         "groq_key_exists": groq_key_exists,
+        "extraction_log": log_content
     }
 
 

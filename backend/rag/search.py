@@ -13,19 +13,36 @@ TOP_K = 10
 # Automatically restore Qdrant local database if missing/empty
 db_parent = os.path.dirname(QDRANT_PATH)
 zip_path = os.path.join(db_parent, "local_qdrant.zip")
+log_path = os.path.join(db_parent, "extraction.log")
+
+def log_extract(msg):
+    print(msg)
+    try:
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"{msg}\n")
+    except Exception:
+        pass
 
 if not os.path.exists(QDRANT_PATH) or not os.listdir(QDRANT_PATH):
-    print("Qdrant local database not found or empty.")
+    log_extract("Qdrant local database not found or empty.")
     if os.path.exists(zip_path):
-        print(f"Extracting {zip_path} to {QDRANT_PATH}...")
+        log_extract(f"Extracting {zip_path} to {db_parent}...")
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(db_parent)
-            print("Extraction complete!")
+            log_extract("Extraction complete!")
+            if os.path.exists(QDRANT_PATH):
+                log_extract(f"Contents after extract: {os.listdir(QDRANT_PATH)}")
+                if os.path.exists(os.path.join(QDRANT_PATH, "collection")):
+                    log_extract(f"Collection folder contents: {os.listdir(os.path.join(QDRANT_PATH, 'collection'))}")
+                else:
+                    log_extract("Warning: collection folder was NOT found in local_qdrant after extract!")
+            else:
+                log_extract("Warning: local_qdrant directory still does not exist after extract!")
         except Exception as e:
-            print(f"Error extracting Qdrant database zip: {e}")
+            log_extract(f"Error extracting Qdrant database zip: {e}")
     else:
-        print(f"Warning: {zip_path} not found. Cannot restore Qdrant database.")
+        log_extract(f"Warning: {zip_path} not found. Cannot restore Qdrant database.")
 
 # Load once at module level (reused across calls)
 print("Initializing Qdrant client...")
