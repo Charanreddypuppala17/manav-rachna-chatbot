@@ -14,11 +14,11 @@ sys.path.append(os.path.dirname(__file__))
 
 # Pre-load embedding model during startup to prevent request timeouts on Render
 try:
-    print("Pre-loading RAG search modules (downloading/loading SentenceTransformer)...")
+    print("Pre-loading RAG search modules (Initializing Qdrant client)...")
     from rag.search import search
     print("RAG search modules pre-loaded successfully!")
 except Exception as e:
-    print(f"Warning: RAG search pre-load failed (will load lazily): {e}")
+    print(f"Warning: RAG search pre-load failed: {e}")
 
 from api.chat import chat
 from api.auth import get_password_hash, verify_password, create_access_token, get_current_user, get_current_user_optional
