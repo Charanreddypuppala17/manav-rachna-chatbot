@@ -21,7 +21,7 @@ except Exception as e:
     print(f"Warning: RAG search pre-load failed: {e}")
 
 from api.chat import chat
-from api.auth import get_password_hash, verify_password, create_access_token, get_current_user, get_current_user_optional
+from api.auth import get_password_hash, verify_password, create_access_token, get_current_user, get_current_user_optional, verify_google_token
 import db.database as db
 
 app = FastAPI(title="College Chatbot API")
@@ -44,6 +44,9 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     email: str
     password: str
+
+class GoogleLoginRequest(BaseModel):
+    token: str
 
 class Message(BaseModel):
     role: str
@@ -96,6 +99,47 @@ def login(user: UserLogin):
             detail="Invalid email or password"
         )
     
+    token = create_access_token(data={"sub": str(db_user["id"]), "email": db_user["email"]})
+    return {"token": token, "email": db_user["email"]}
+
+@app.post("/api/auth/google")
+def google_login(req: GoogleLoginRequest):
+    # Verify token
+    try:
+        google_user = verify_google_token(req.token)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Google authentication failed: {str(e)}"
+        )
+        
+    email = google_user.get("email")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google token did not contain email"
+        )
+        
+    db_user = db.get_user_by_email(email)
+    if not db_user:
+        # Create user with a secure random password hash
+        random_password = str(uuid4())
+        password_hash = get_password_hash(random_password)
+        try:
+            db.create_user(email, password_hash)
+            db_user = db.get_user_by_email(email)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to register user from Google: {str(e)}"
+            )
+            
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User retrieval failed after registration"
+        )
+        
     token = create_access_token(data={"sub": str(db_user["id"]), "email": db_user["email"]})
     return {"token": token, "email": db_user["email"]}
 

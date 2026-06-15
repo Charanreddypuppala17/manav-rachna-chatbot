@@ -789,4 +789,35 @@
 
 .loginBtn:hover {
   background: #0F6E56;
-}
+}
+
+.authDivider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 16px 0;
+  color: #b4b2a9;
+  font-size: 12px;
+}
+
+.authDivider::before,
+.authDivider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 0.5px solid #e0dfd6;
+}
+
+.authDivider:not(:empty)::before {
+  margin-right: .5em;
+}
+
+.authDivider:not(:empty)::after {
+  margin-left: .5em;
+}
+
+.googleBtnContainer {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: 4px;
+}

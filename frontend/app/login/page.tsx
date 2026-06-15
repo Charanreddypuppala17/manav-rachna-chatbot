@@ -4,6 +4,35 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import styles from '../../components/chat.module.css'
 
+interface GoogleCredentialResponse {
+  credential: string
+}
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: { client_id: string; callback: (response: GoogleCredentialResponse) => void }) => void
+          renderButton: (
+            element: HTMLElement | null,
+            options: {
+              theme?: string
+              size?: string
+              type?: string
+              shape?: string
+              text?: string
+              logo_alignment?: string
+              width?: number
+            }
+          ) => void
+        }
+      }
+    }
+    handleGoogleSignIn?: (response: GoogleCredentialResponse) => Promise<void>
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login')
@@ -23,6 +52,77 @@ export default function LoginPage() {
       router.push('/')
     }
   }, [router])
+
+  // Load Google Client SDK script
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.async = true
+    script.defer = true
+    document.body.appendChild(script)
+    return () => {
+      document.body.removeChild(script)
+    }
+  }, [])
+
+  // Set up Google sign-in response callback on window
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.handleGoogleSignIn = async (response: GoogleCredentialResponse) => {
+        setAuthError(null)
+        setAuthSuccess(null)
+        setAuthLoading(true)
+
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: response.credential })
+          })
+
+          const data = await res.json()
+          if (!res.ok) {
+            setAuthError(data.detail || 'Google sign-in failed.')
+            setAuthLoading(false)
+            return
+          }
+
+          localStorage.setItem('token', data.token)
+          localStorage.setItem('email', data.email)
+          
+          router.push('/')
+        } catch {
+          setAuthError('Could not connect to authentication server.')
+          setAuthLoading(false)
+        }
+      }
+    }
+  }, [API_BASE_URL, router])
+
+  // Initialize and render Google Sign-In button
+  useEffect(() => {
+    const initGoogle = () => {
+      if (window.google) {
+        window.google.accounts.id.initialize({
+          client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '1097672650653-03rsdf8or9juo5ochgls9gsd43n85oav.apps.googleusercontent.com',
+          callback: window.handleGoogleSignIn || (() => {})
+        })
+        window.google.accounts.id.renderButton(
+          document.getElementById('google-signin-btn'),
+          { theme: 'outline', size: 'large', type: 'standard', shape: 'rectangular', text: 'signin_with', logo_alignment: 'left', width: 360 }
+        )
+      }
+    }
+
+    const timer = setInterval(() => {
+      if (window.google) {
+        initGoogle()
+        clearInterval(timer)
+      }
+    }, 500)
+
+    return () => clearInterval(timer)
+  }, [])
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -165,6 +265,12 @@ export default function LoginPage() {
             {authLoading ? 'Please wait...' : activeTab === 'login' ? 'Sign In' : 'Create Account'}
           </button>
         </form>
+
+        <div className={styles.authDivider}>
+          <span>or</span>
+        </div>
+
+        <div id="google-signin-btn" className={styles.googleBtnContainer}></div>
       </div>
     </div>
   )

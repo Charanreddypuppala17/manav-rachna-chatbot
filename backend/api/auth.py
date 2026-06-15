@@ -2,6 +2,8 @@ import os
 import jwt
 from datetime import datetime, timedelta
 import bcrypt
+import urllib.request
+import json
 from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -76,3 +78,49 @@ async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCrede
         return {"id": int(user_id), "email": email}
     except Exception:
         return None
+
+def verify_google_token(token: str) -> dict:
+    try:
+        url = f"https://oauth2.googleapis.com/tokeninfo?id_token={token}"
+        req = urllib.request.Request(url, headers={"User-Agent": "FastAPI-Google-Auth"})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Failed to verify Google token with Google servers"
+                )
+            data = json.loads(response.read().decode("utf-8"))
+            
+        # Validate Issuer
+        iss = data.get("iss")
+        if iss not in ["accounts.google.com", "https://accounts.google.com"]:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Google token issuer"
+            )
+            
+        # Validate Audience if Client ID is configured
+        google_client_id = os.getenv("GOOGLE_CLIENT_ID")
+        if google_client_id:
+            aud = data.get("aud")
+            if aud != google_client_id:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Google token audience mismatch"
+                )
+                
+        # Ensure email is verified
+        if data.get("email_verified") != "true" and data.get("email_verified") is not True:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Google email not verified"
+            )
+            
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Google token: {str(e)}"
+        )
