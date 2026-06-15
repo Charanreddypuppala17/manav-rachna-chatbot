@@ -519,7 +519,15 @@ export default function Chat() {
               </button>
             </div>
             <p className={styles.disclaimer}>
-              Answers are based on the official Manavrachna University website.
+              Answers are based on the official Manavrachna University website. Developed by{' '}
+              <a
+                href="https://github.com/Charanreddypuppala17/manav-rachna-chatbot"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textDecoration: 'underline', color: 'inherit' }}
+              >
+                Charan
+              </a>
             </p>
           </div>
 
